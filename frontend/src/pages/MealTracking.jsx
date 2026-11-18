@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react'
 
 import Sidebar from '../components/Sidebar'
@@ -6,6 +5,7 @@ import NutritionSummary from '../components/NutritionSummary'
 import MacroProgress from '../components/MacroProgress'
 import HydrationTracker from '../components/HydrationTracker'
 import MealSection from '../components/MealSection'
+import api from '../services/api' // ملف الاتصال بالسيرفر
 
 const initialMeals = [
   {
@@ -46,19 +46,33 @@ const initialMeals = [
 ]
 
 function MealTracking() {
-   const [mealData, setMealData] = useState(() => {
-  try {
-    const savedMeals = localStorage.getItem('fitsync-meals')
-    return savedMeals ? JSON.parse(savedMeals) : initialMeals
-  } catch {
-    return initialMeals
-  }
-})
+  const [mealData, setMealData] = useState(() => {
+    try {
+      const savedMeals = localStorage.getItem('fitsync-meals')
+      return savedMeals ? JSON.parse(savedMeals) : initialMeals
+    } catch {
+      return initialMeals
+    }
+  })
 
-useEffect(() => {
-  localStorage.setItem('fitsync-meals', JSON.stringify(mealData))
-}, [mealData])
+  // جلب البيانات من قاعدة البيانات عبر الـ API عند فتح الصفحة
+  useEffect(() => {
+    api.get('/meal-logs')
+      .then(response => {
+        if (response.data && response.data.length > 0) {
+          console.log("تم استرجاع السجلات بنجاح:", response.data);
+        }
+      })
+      .catch(error => {
+        console.log("الاعتماد على التخزين المحلي مؤقتاً:", error);
+      });
+  }, [])
 
+  useEffect(() => {
+    localStorage.setItem('fitsync-meals', JSON.stringify(mealData))
+  }, [mealData])
+
+  // حساب المجاميع والماكروز تلقائياً لحظة بلحظة وبدقة
   const dailyTotals = mealData.reduce(
     (daily, meal) => {
       const mealTotals = meal.foods.reduce(
@@ -82,13 +96,31 @@ useEffect(() => {
   )
 
   function handleAddFood(mealName, food) {
+    // التأكد من أن القيم تُحسب بشكل سليم وتلقائي لكي لا تظهر بصفر أبداً
+    const formattedFood = {
+      name: food.name || 'Custom Food',
+      description: food.description || '',
+      calories: Number(food.calories || 0),
+      protein: Number(food.protein || Math.round((food.calories * 0.3) / 4) || 0),
+      carbs: Number(food.carbs || Math.round((food.calories * 0.4) / 4) || 0),
+      fat: Number(food.fat || Math.round((food.calories * 0.3) / 9) || 0),
+    }
+
     setMealData((currentMeals) =>
       currentMeals.map((meal) =>
         meal.name === mealName
-          ? { ...meal, foods: [...meal.foods, food] }
+          ? { ...meal, foods: [...meal.foods, formattedFood] }
           : meal
       )
     )
+
+    // إرسال البيانات المنسقة إلى جدول قاعدة البيانات عبر لارافيل
+    api.post('/meal-logs', { 
+      meal_name: mealName, 
+      ...formattedFood
+    })
+      .then(res => console.log("تم حفظ السجل في قاعدة البيانات بنجاح:", res.data))
+      .catch(err => console.log("خطأ في الحفظ (تأكد من تسجيل الدخول لتجنب خطأ 401):", err));
   }
 
   function handleEditFood(mealName, foodIndex, updatedFood) {
