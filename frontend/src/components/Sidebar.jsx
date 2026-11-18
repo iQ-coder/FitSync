@@ -1,11 +1,5 @@
+
 function Sidebar() {
-  const currentPath = window.location.hash || '#nutrition'
-
-  // دالة لمنع الروابط الفارغة من إعادة توجيه الصفحة أو رفعها للأعلى
-  function handleDisabledClick(e) {
-    e.preventDefault()
-  }
-
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -16,33 +10,33 @@ function Sidebar() {
       <nav className="sidebar-nav">
         <p className="nav-label">MAIN MENU</p>
 
-        <a href="#" onClick={handleDisabledClick} className="nav-item" style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+        <a href="#" className="nav-item">
           <span>▦</span> Dashboard
         </a>
 
-        <a href="#" onClick={handleDisabledClick} className="nav-item" style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+        <a href="#" className="nav-item">
           <span>🏋</span> Workouts
         </a>
 
-        <a href="#nutrition" className={`nav-item ${currentPath === '#nutrition' ? 'active' : ''}`}>
+        <a href="#" className="nav-item active">
           <span>◉</span> Nutrition
         </a>
 
-        <a href="#progress" className={`nav-item ${currentPath === '#progress' ? 'active' : ''}`}>
+        <a href="#" className="nav-item">
           <span>▥</span> Progress
         </a>
 
-        <a href="#" onClick={handleDisabledClick} className="nav-item" style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+        <a href="#" className="nav-item">
           <span>⌖</span> Find Gyms
         </a>
 
-        <a href="#" onClick={handleDisabledClick} className="nav-item" style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+        <a href="#" className="nav-item">
           <span>♙</span> Trainers
         </a>
 
         <p className="nav-label">ACCOUNT</p>
 
-        <a href="#" onClick={handleDisabledClick} className="nav-item" style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+        <a href="#" className="nav-item">
           <span>⚙</span> Settings
         </a>
       </nav>
