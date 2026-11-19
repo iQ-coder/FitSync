@@ -1,5 +1,6 @@
-
 function Sidebar() {
+  const isProgress = window.location.hash === '#/progress'
+
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
@@ -18,11 +19,17 @@ function Sidebar() {
           <span>🏋</span> Workouts
         </a>
 
-        <a href="#" className="nav-item active">
+        <a
+          href="#/nutrition"
+          className={`nav-item ${!isProgress ? 'active' : ''}`}
+        >
           <span>◉</span> Nutrition
         </a>
 
-        <a href="#" className="nav-item">
+        <a
+          href="#/progress"
+          className={`nav-item ${isProgress ? 'active' : ''}`}
+        >
           <span>▥</span> Progress
         </a>
 

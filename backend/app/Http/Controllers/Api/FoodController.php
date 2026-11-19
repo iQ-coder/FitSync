@@ -38,6 +38,23 @@ class FoodController extends Controller
      * Preview nutrition values before saving.
      * POST /api/foods/calculate  { "name": "...", "grams": 150 }
      */
+        public function store(Request $request)
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:150'],
+            'calories_per_100g' => ['required', 'numeric', 'min:0'],
+            'protein_per_100g' => ['required', 'numeric', 'min:0'],
+            'carbs_per_100g' => ['required', 'numeric', 'min:0'],
+            'fat_per_100g' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $name = trim($data['name']);
+
+        $food = Food::where('name', $name)->first() ?: new Food();
+        $food->forceFill(array_merge($data, ['name' => $name]))->save();
+
+        return response()->json(['data' => $food], 201);
+    }
     public function calculate(Request $request)
     {
         $data = $request->validate([

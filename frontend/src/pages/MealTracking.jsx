@@ -1,5 +1,5 @@
-
 import { useState, useEffect } from 'react'
+import api from '../services/api'
 
 import Sidebar from '../components/Sidebar'
 import NutritionSummary from '../components/NutritionSummary'
@@ -7,57 +7,125 @@ import MacroProgress from '../components/MacroProgress'
 import HydrationTracker from '../components/HydrationTracker'
 import MealSection from '../components/MealSection'
 
-const initialMeals = [
-  {
-    name: 'Breakfast',
-    icon: '🍳',
-    time: '7:30 AM',
-    foods: [
-      { name: 'Scrambled Eggs', description: '2 large eggs', calories: 180, protein: 13, carbs: 2, fat: 14 },
-      { name: 'Oatmeal', description: '60g rolled oats', calories: 230, protein: 8, carbs: 40, fat: 4 },
-      { name: 'Banana', description: '1 medium banana', calories: 110, protein: 1, carbs: 27, fat: 0 },
-    ],
-  },
-  {
-    name: 'Lunch',
-    icon: '🍗',
-    time: '1:00 PM',
-    foods: [
-      { name: 'Chicken Breast', description: '200g grilled', calories: 330, protein: 62, carbs: 0, fat: 7 },
-      { name: 'White Rice', description: '200g cooked', calories: 260, protein: 5, carbs: 57, fat: 1 },
-    ],
-  },
-  {
-    name: 'Dinner',
-    icon: '🥗',
-    time: '7:00 PM',
-    foods: [
-      { name: 'Grilled Chicken Salad', description: 'Chicken, vegetables and dressing', calories: 420, protein: 30, carbs: 38, fat: 15 },
-    ],
-  },
-  {
-    name: 'Snacks',
-    icon: '🍎',
-    time: 'Throughout the day',
-    foods: [
-      { name: 'Full-fat Yogurt', description: '150g serving', calories: 180, protein: 10, carbs: 20, fat: 6 },
-    ],
-  },
+const mealTemplates = [
+  { name: 'Breakfast', icon: '🍳', time: '7:30 AM', type: 'breakfast' },
+  { name: 'Lunch', icon: '🍗', time: '1:00 PM', type: 'lunch' },
+  { name: 'Dinner', icon: '🥗', time: '7:00 PM', type: 'dinner' },
+  { name: 'Snacks', icon: '🍎', time: 'Throughout the day', type: 'snack' },
 ]
 
-function MealTracking() {
-   const [mealData, setMealData] = useState(() => {
-  try {
-    const savedMeals = localStorage.getItem('fitsync-meals')
-    return savedMeals ? JSON.parse(savedMeals) : initialMeals
-  } catch {
-    return initialMeals
-  }
-})
+const pad = (n) => String(n).padStart(2, '0')
 
-useEffect(() => {
-  localStorage.setItem('fitsync-meals', JSON.stringify(mealData))
-}, [mealData])
+function getToday() {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+function shiftDate(iso, days) {
+  const [y, m, d] = iso.split('-').map(Number)
+  const date = new Date(y, m - 1, d + days)
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function formatHeaderDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number)
+  const label = new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    month: 'long',
+    day: 'numeric',
+  })
+
+  return iso === getToday() ? `Today, ${label}` : label
+}
+// الصيغة التي يطلبها الباك: 2026-11-19T03:10:00+03:00
+function nowWithOffset() {
+  const d = new Date(Date.now() - 60000)
+  const offset = -d.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const abs = Math.abs(offset)
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
+    `T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}` +
+    `${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+  )
+}
+function consumedAtFor(dateISO) {
+  if (dateISO === getToday()) return nowWithOffset()
+
+  const d = new Date()
+  const offset = -d.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const abs = Math.abs(offset)
+
+  return `${dateISO}T12:00:00${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
+}
+// يستخرج الغرامات من حقل الحجم (مثل "200g grilled")، وإلا يعتبرها 100
+function parseGrams(description) {
+  const match = String(description || '').match(
+    /(\d+(?:\.\d+)?)\s*(?:g|gr|gram|grams)(?![a-z])/i
+  )
+  const grams = match ? Number(match[1]) : 100
+  return grams > 0 ? Math.min(grams, 10000) : 100
+}
+
+function normalizeLog(log) {
+  return {
+    id: log.meal_log_id,
+    name: log.name,
+    description: log.notes || `${Number(log.grams)}g`,
+    calories: Number(log.calories || 0),
+    protein: Number(log.protein_g || 0),
+    carbs: Number(log.carbs_g || 0),
+    fat: Number(log.fat_g || 0),
+    type: log.meal_type,
+  }
+}
+
+function buildMeals(logs) {
+  const normalized = logs.map(normalizeLog)
+  return mealTemplates.map(({ type, ...template }) => ({
+    ...template,
+    foods: normalized.filter((item) => item.type === type),
+  }))
+}
+
+// يحفظ الطعام في جدول الأطعمة (قيمه لكل 100g) ويرجع بيانات السجل
+async function upsertFood(food) {
+  const grams = parseGrams(food.description)
+  const per100 = (value) => Number(((Number(value || 0) * 100) / grams).toFixed(2))
+
+  await api.post('/foods', {
+    name: food.name,
+    calories_per_100g: per100(food.calories),
+    protein_per_100g: per100(food.protein),
+    carbs_per_100g: per100(food.carbs),
+    fat_per_100g: per100(food.fat),
+  })
+
+  return {
+    name: food.name,
+    grams,
+    notes: food.description || null,
+  }
+}
+
+function MealTracking() {
+  const [mealData, setMealData] = useState(buildMeals([]))
+  const [loading, setLoading] = useState(true)
+    const [selectedDate, setSelectedDate] = useState(getToday())
+  const today = selectedDate
+    useEffect(() => {
+    fetchMealsFromBackend()
+  }, [selectedDate])
+
+  const fetchMealsFromBackend = async () => {
+    try {
+      const response = await api.get('/meal-logs', { params: { date: today } })
+      setMealData(buildMeals(response.data.data || []))
+    } catch (error) {
+      console.error('Error fetching meals from backend:', error.response?.data || error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const dailyTotals = mealData.reduce(
     (daily, meal) => {
@@ -81,42 +149,54 @@ useEffect(() => {
     { calories: 0, protein: 0, carbs: 0, fat: 0 }
   )
 
-  function handleAddFood(mealName, food) {
-    setMealData((currentMeals) =>
-      currentMeals.map((meal) =>
-        meal.name === mealName
-          ? { ...meal, foods: [...meal.foods, food] }
-          : meal
-      )
-    )
+  const typeOf = (mealName) =>
+    mealTemplates.find((m) => m.name === mealName)?.type
+
+  async function handleAddFood(mealName, food) {
+    try {
+      const base = await upsertFood(food)
+
+      await api.post('/meal-logs', {
+        ...base,
+        meal_type: typeOf(mealName),
+               consumed_at: consumedAtFor(selectedDate),
+
+      })
+
+      await fetchMealsFromBackend()
+    } catch (error) {
+      console.error('Error adding food:', error.response?.data || error)
+    }
   }
 
-  function handleEditFood(mealName, foodIndex, updatedFood) {
-    setMealData((currentMeals) =>
-      currentMeals.map((meal) =>
-        meal.name === mealName
-          ? {
-              ...meal,
-              foods: meal.foods.map((food, index) =>
-                index === foodIndex ? updatedFood : food
-              ),
-            }
-          : meal
-      )
-    )
+  async function handleEditFood(mealName, foodIndex, updatedFood) {
+    const current = mealData.find((m) => m.name === mealName)?.foods[foodIndex]
+    if (!current) return
+
+    try {
+      const base = await upsertFood(updatedFood)
+
+      await api.patch(`/meal-logs/${current.id}`, {
+        ...base,
+        meal_type: typeOf(mealName),
+      })
+
+      await fetchMealsFromBackend()
+    } catch (error) {
+      console.error('Error updating food:', error.response?.data || error)
+    }
   }
 
-  function handleDeleteFood(mealName, foodIndex) {
-    setMealData((currentMeals) =>
-      currentMeals.map((meal) =>
-        meal.name === mealName
-          ? {
-              ...meal,
-              foods: meal.foods.filter((_, index) => index !== foodIndex),
-            }
-          : meal
-      )
-    )
+  async function handleDeleteFood(mealName, foodIndex) {
+    const current = mealData.find((m) => m.name === mealName)?.foods[foodIndex]
+    if (!current) return
+
+    try {
+      await api.delete(`/meal-logs/${current.id}`)
+      await fetchMealsFromBackend()
+    } catch (error) {
+      console.error('Error deleting food:', error.response?.data || error)
+    }
   }
 
   return (
@@ -133,11 +213,18 @@ useEffect(() => {
             </p>
           </div>
 
-          <div className="date-navigation">
-            <button type="button">‹</button>
-            <span>Today, November 13</span>
-            <button type="button">›</button>
+                    <div className="date-navigation">
+            <button type="button" onClick={() => setSelectedDate(shiftDate(selectedDate, -1))}>‹</button>
+            <span>{formatHeaderDate(selectedDate)}</span>
+            <button
+              type="button"
+              onClick={() => setSelectedDate(shiftDate(selectedDate, 1))}
+              disabled={selectedDate >= getToday()}
+            >
+              ›
+            </button>
           </div>
+          
         </header>
 
         <NutritionSummary calories={dailyTotals.calories} />

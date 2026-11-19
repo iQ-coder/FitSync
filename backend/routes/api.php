@@ -8,10 +8,13 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1');
 
+Route::get('/meals', [MealLogController::class, 'index']);
+
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::get('/foods', [FoodController::class, 'index']);
+        Route::post('/foods', [FoodController::class, 'store']);
     Route::post('/foods/calculate', [FoodController::class, 'calculate']);
 
     Route::get('/planned-meals', [
