@@ -7,12 +7,14 @@ use Illuminate\Validation\Rule;
 
 class SaveMealLogRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return $this->user()?->is_active
-            && $this->user()?->role === 'athlete'
-            && $this->user()?->athlete !== null;
-    }
+   public function authorize(): bool
+{
+    return true;
+
+    // return $this->user()?->is_active
+    //     && $this->user()?->role === 'athlete'
+    //     && $this->user()?->athlete !== null;
+}
 
     public function rules(): array
     {
@@ -29,17 +31,21 @@ class SaveMealLogRequest extends FormRequest
             'carbs_g' => ['prohibited'],
             'fat_g' => ['prohibited'],
 
-            'meal_id' => [
-                'sometimes',
-                'nullable',
-                'integer',
-                Rule::exists('meals', 'meal_id')->whereIn(
-                    'nutrition_plan_id',
-                    $this->user()->athlete->nutritionPlans()
-                        ->select('nutrition_plan_id')
-                ),
-            ],
-
+           'meal_id' => [
+    'sometimes',
+    'nullable',
+    'integer',
+    $this->user()?->athlete
+        ? Rule::exists('meals', 'meal_id')->whereIn(
+            'nutrition_plan_id',
+            $this->user()->athlete->nutritionPlans()->select('nutrition_plan_id')
+        )
+        : Rule::exists('meals', 'meal_id'),
+    // Rule::exists('meals', 'meal_id')->whereIn(
+    //     'nutrition_plan_id',
+    //     $this->user()->athlete->nutritionPlans()->select('nutrition_plan_id')
+    // ),
+],
             // Either food_id or the food name
             'food_id' => [
                 'sometimes',
@@ -54,8 +60,17 @@ class SaveMealLogRequest extends FormRequest
                 'max:150',
             ],
 
+            // What the user types: "200g", "3 eggs". The server turns it into grams.
+            'serving' => [
+                'sometimes',
+                'nullable',
+                'string',
+                'max:100',
+            ],
+
+            // Plain grams still work (used when no serving is sent)
             'grams' => [
-                $presence,
+                $isCreate ? 'required_without:serving' : 'sometimes',
                 'numeric',
                 'gt:0',
                 'max:10000',

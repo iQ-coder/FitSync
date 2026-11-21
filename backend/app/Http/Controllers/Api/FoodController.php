@@ -10,7 +10,8 @@ use Illuminate\Validation\ValidationException;
 class FoodController extends Controller
 {
     /**
-     * Search foods by name (for autocomplete).
+     * Food catalog. No q = the whole catalog (for the food picker);
+     * with q = search by name.
      * GET /api/foods?q=chicken
      */
     public function index(Request $request)
@@ -28,7 +29,7 @@ class FoodController extends Controller
                 $query->where('name', 'like', $like);
             })
             ->orderBy('name')
-            ->limit(20)
+            ->limit($q === '' ? 200 : 50)
             ->get();
 
         return response()->json(['data' => $foods]);
@@ -60,7 +61,9 @@ class FoodController extends Controller
         $data = $request->validate([
             'food_id' => ['nullable', 'integer', 'exists:foods,food_id'],
             'name' => ['required_without:food_id', 'string', 'max:150'],
-            'grams' => ['required', 'numeric', 'gt:0', 'max:10000'],
+            // Either a free-text serving ("200g", "3 eggs") or plain grams
+            'serving' => ['required_without:grams', 'nullable', 'string', 'max:100'],
+            'grams' => ['required_without:serving', 'numeric', 'gt:0', 'max:10000'],
         ]);
 
         $food = self::resolveFood($data);
@@ -69,8 +72,10 @@ class FoodController extends Controller
             'food' => [
                 'food_id' => $food->food_id,
                 'name' => $food->name,
+                'emoji' => $food->emoji,
+                'prep' => $food->prep,
             ],
-            'nutrition' => $food->nutritionFor((float) $data['grams']),
+            'nutrition' => $food->nutritionFor(self::resolveGrams($data, $food)),
         ]);
     }
 
@@ -83,16 +88,26 @@ class FoodController extends Controller
             return Food::findOrFail($data['food_id']);
         }
 
-        $name = trim($data['name'] ?? '');
-
-        $food = Food::where('name', $name)->first();
+        $food = Food::findByName($data['name'] ?? '');
 
         if (!$food) {
             throw ValidationException::withMessages([
-                'name' => ['Food not found. Search for it using /api/foods?q=.'],
+                'name' => ['Food not found in the database. Pick one from /api/foods.'],
             ]);
         }
 
         return $food;
+    }
+
+    /**
+     * Grams from the typed serving ("3 eggs") if present, otherwise the plain grams.
+     */
+    public static function resolveGrams(array $data, Food $food): float
+    {
+        if (isset($data['serving']) && trim($data['serving']) !== '') {
+            return $food->gramsFromServing($data['serving']);
+        }
+
+        return (float) $data['grams'];
     }
 }

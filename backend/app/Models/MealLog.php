@@ -15,6 +15,7 @@ class MealLog extends Model
         'name',
         'meal_type',
         'grams',
+        'serving',
         'calories',
         'protein_g',
         'carbs_g',

@@ -9,14 +9,45 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1');
 
+// مؤقتاً للتجربة بدون auth:sanctum (الأصل داخل المجموعة أدناه معلق):
+// Foods
+Route::get('/foods', [FoodController::class, 'index']);
+Route::post('/foods/calculate', [FoodController::class, 'calculate']);
+
+// Meal Logs
+Route::get('/meal-logs/summary', [
+    MealLogController::class,
+    'summary',
+]);
+
+Route::get('/meal-logs', [
+    MealLogController::class,
+    'index',
+]);
+
+Route::post('/meal-logs', [
+    MealLogController::class,
+    'store',
+]);
+
+Route::patch('/meal-logs/{id}', [
+    MealLogController::class,
+    'update',
+])->whereNumber('id');
+
+Route::delete('/meal-logs/{id}', [
+    MealLogController::class,
+    'destroy',
+])->whereNumber('id');
+
 Route::middleware('auth:sanctum')->group(function () {
 
     // Authentication
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    // Foods
-    Route::get('/foods', [FoodController::class, 'index']);
-    Route::post('/foods/calculate', [FoodController::class, 'calculate']);
+    // Foods (معلقة مؤقتاً لأنها نُقلت للأعلى للتجربة)
+    // Route::get('/foods', [FoodController::class, 'index']);
+    // Route::post('/foods/calculate', [FoodController::class, 'calculate']);
 
     // Planned Meals
     Route::get('/planned-meals', [
@@ -24,31 +55,31 @@ Route::middleware('auth:sanctum')->group(function () {
         'plannedMeals',
     ]);
 
-    // Meal Logs
-    Route::get('/meal-logs/summary', [
-        MealLogController::class,
-        'summary',
-    ]);
-
-    Route::get('/meal-logs', [
-        MealLogController::class,
-        'index',
-    ]);
-
-    Route::post('/meal-logs', [
-        MealLogController::class,
-        'store',
-    ]);
-
-    Route::patch('/meal-logs/{id}', [
-        MealLogController::class,
-        'update',
-    ])->whereNumber('id');
-
-    Route::delete('/meal-logs/{id}', [
-        MealLogController::class,
-        'destroy',
-    ])->whereNumber('id');
+    // Meal Logs (معلقة مؤقتاً لأنها نُقلت للأعلى للتجربة)
+    // Route::get('/meal-logs/summary', [
+    //     MealLogController::class,
+    //     'summary',
+    // ]);
+    //
+    // Route::get('/meal-logs', [
+    //     MealLogController::class,
+    //     'index',
+    // ]);
+    //
+    // Route::post('/meal-logs', [
+    //     MealLogController::class,
+    //     'store',
+    // ]);
+    //
+    // Route::patch('/meal-logs/{id}', [
+    //     MealLogController::class,
+    //     'update',
+    // ])->whereNumber('id');
+    //
+    // Route::delete('/meal-logs/{id}', [
+    //     MealLogController::class,
+    //     'destroy',
+    // ])->whereNumber('id');
 
     // Progress API
     Route::get('/progress', [

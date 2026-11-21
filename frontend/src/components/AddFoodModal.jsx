@@ -1,142 +1,97 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import api from '../services/api'
 
-// يستخرج الغرامات من حقل الحجم (مثل "200g grilled")
-function parseGrams(description) {
-  const match = String(description || '').match(
-    /(\d+(?:\.\d+)?)\s*(?:g|gr|gram|grams)(?![a-z])/i
-  )
-  return match ? Number(match[1]) : null
+// أول رسالة خطأ من استجابة Laravel (422)
+function errorMessage(error) {
+  const errors = error.response?.data?.errors
+  if (errors) return Object.values(errors)[0]?.[0]
+  return error.response?.data?.message || 'Something went wrong, please try again.'
 }
 
-// تقدير الماكروز من السعرات: بنفس نسب الطعام الأصلي إن وُجدت، وإلا 25% / 50% / 25%
-function estimateMacros(kcal, ratio) {
-  if (ratio) {
-    return {
-      protein: Math.round(kcal * ratio.protein),
-      carbs: Math.round(kcal * ratio.carbs),
-      fat: Math.round(kcal * ratio.fat),
-    }
-  }
-
-  return {
-    protein: Math.round((kcal * 0.25) / 4),
-    carbs: Math.round((kcal * 0.5) / 4),
-    fat: Math.round((kcal * 0.25) / 9),
-  }
+function defaultServing(food) {
+  return food.serving_unit ? `1 ${food.serving_unit}` : '100g'
 }
 
 function AddFoodModal({ mealName, onClose, onAdd, initialFood = null }) {
-  const [food, setFood] = useState({
-    name: initialFood?.name || '',
-    description: initialFood?.description || '',
-    calories: initialFood?.calories ?? '',
-    protein: initialFood?.protein ?? '',
-    carbs: initialFood?.carbs ?? '',
-    fat: initialFood?.fat ?? '',
-  })
+  const [name, setName] = useState(initialFood?.name || '')
+  const [serving, setServing] = useState(initialFood?.description || '')
+
+  const [catalog, setCatalog] = useState([])
+  const [preview, setPreview] = useState(null)
+  const [previewError, setPreviewError] = useState('')
+  const [submitError, setSubmitError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const isEditing = Boolean(initialFood)
 
-  // الحقول التي كتبها المستخدم بنفسه (لا نكتب فوقها)
-  const touched = useRef(new Set())
-
-  // هل غيّر المستخدم الاسم أو الحجم (لتفعيل البحث في قاعدة البيانات)
-  const lookupNeeded = useRef(false)
-
-  // نسب الماكروز الأصلية عند فتح التعديل
-  const baseRatio = useRef(
-    initialFood &&
-      Number(initialFood.calories) > 0 &&
-      Number(initialFood.protein || 0) +
-        Number(initialFood.carbs || 0) +
-        Number(initialFood.fat || 0) > 0
-      ? {
-          protein: Number(initialFood.protein || 0) / Number(initialFood.calories),
-          carbs: Number(initialFood.carbs || 0) / Number(initialFood.calories),
-          fat: Number(initialFood.fat || 0) / Number(initialFood.calories),
-        }
-      : null
-  )
-
-  // إن كان الطعام موجودًا في قاعدة البيانات: قيم دقيقة من الباك
+  // قائمة الأطعمة من قاعدة البيانات
   useEffect(() => {
-    if (!lookupNeeded.current) return
+    api
+      .get('/foods')
+      .then((res) => setCatalog(res.data.data || []))
+      .catch(() => setCatalog([]))
+  }, [])
+
+  // الباك هو من يحسب السعرات والماكروز: نرسل الاسم والحجم فقط
+  useEffect(() => {
+    setPreview(null)
+    setPreviewError('')
+
+    if (!name.trim() || !serving.trim()) return
+
+    let cancelled = false
 
     const timer = setTimeout(async () => {
-      const name = food.name.trim()
-      const grams = parseGrams(food.description)
-
-      if (!name || !grams || touched.current.has('calories')) return
-
       try {
-        const res = await api.post('/foods/calculate', { name, grams })
-        const n = res.data.nutrition
+        const res = await api.post('/foods/calculate', {
+          name: name.trim(),
+          serving: serving.trim(),
+        })
 
-        setFood((cur) => ({
-          ...cur,
-          calories: Math.round(n.calories),
-          protein: touched.current.has('protein') ? cur.protein : Math.round(n.protein_g),
-          carbs: touched.current.has('carbs') ? cur.carbs : Math.round(n.carbs_g),
-          fat: touched.current.has('fat') ? cur.fat : Math.round(n.fat_g),
-        }))
-      } catch {
-        // غير موجود في القاعدة: لا شيء
+        if (!cancelled) setPreview(res.data)
+      } catch (error) {
+        if (!cancelled) setPreviewError(errorMessage(error))
       }
-    }, 400)
+    }, 350)
 
-    return () => clearTimeout(timer)
-  }, [food.name, food.description])
-
-  function updateField(event) {
-    const { name, value } = event.target
-
-    if (name === 'name' || name === 'description') {
-      lookupNeeded.current = true
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
     }
+  }, [name, serving])
 
-    if (['calories', 'protein', 'carbs', 'fat'].includes(name)) {
-      if (value === '') touched.current.delete(name)
-      else if (name !== 'calories') touched.current.add(name)
-      else touched.current.add('calories')
-    }
-
-    setFood((current) => {
-      const next = { ...current, [name]: value }
-
-      // عند تغيير السعرات: أعد حساب الماكروز التي لم يكتبها المستخدم يدويًا
-      if (name === 'calories') {
-        const kcal = Number(value)
-
-        if (kcal > 0) {
-          const est = estimateMacros(kcal, baseRatio.current)
-
-          if (!touched.current.has('protein')) next.protein = est.protein
-          if (!touched.current.has('carbs')) next.carbs = est.carbs
-          if (!touched.current.has('fat')) next.fat = est.fat
-        }
-      }
-
-      return next
-    })
+  function pickFood(food) {
+    setName(food.name)
+    setServing((current) => current.trim() || defaultServing(food))
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
 
-    if (!food.name.trim()) return
+    if (!preview || saving) return
 
-    onAdd({
-      ...food,
-      name: food.name.trim(),
-      calories: Number(food.calories) || 0,
-      protein: Number(food.protein) || 0,
-      carbs: Number(food.carbs) || 0,
-      fat: Number(food.fat) || 0,
-    })
+    setSaving(true)
+    setSubmitError('')
 
-    onClose()
+    try {
+      await onAdd({
+        name: preview.food.name,
+        serving: serving.trim(),
+      })
+
+      onClose()
+    } catch (error) {
+      setSubmitError(errorMessage(error))
+      setSaving(false)
+    }
   }
+
+  const query = name.trim().toLowerCase()
+  const visibleFoods = catalog.filter(
+    (food) => !query || food.name.toLowerCase().includes(query)
+  )
+
+  const nutrition = preview?.nutrition
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -167,76 +122,80 @@ function AddFoodModal({ mealName, onClose, onAdd, initialFood = null }) {
             Food name
             <input
               name="name"
-              value={food.name}
-              onChange={updateField}
-              placeholder="e.g. Chicken breast"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="e.g. Chicken Breast"
+              autoComplete="off"
               required
             />
           </label>
 
+          {visibleFoods.length > 0 && (
+            <div className="food-chips">
+              {visibleFoods.map((food) => (
+                <button
+                  type="button"
+                  key={food.food_id}
+                  className={
+                    food.name.toLowerCase() === query
+                      ? 'food-chip active'
+                      : 'food-chip'
+                  }
+                  onClick={() => pickFood(food)}
+                >
+                  <span>
+                    {food.emoji || '🍽'} {food.name}
+                  </span>
+                  <small>
+                    per {food.serving_unit ? `1 ${food.serving_unit}` : '100g'}
+                  </small>
+                </button>
+              ))}
+            </div>
+          )}
+
           <label>
             Serving size
             <input
-              name="description"
-              value={food.description}
-              onChange={updateField}
-              placeholder="e.g. 200g grilled"
+              name="serving"
+              value={serving}
+              onChange={(event) => setServing(event.target.value)}
+              placeholder="e.g. 200g  or  3 eggs"
+              autoComplete="off"
+              required
             />
           </label>
 
           <div className="form-divider">
-            NUTRITION INFORMATION
+            NUTRITION (CALCULATED AUTOMATICALLY)
           </div>
 
-          <label>
-            Calories (kcal)
-            <input
-              type="number"
-              min="0"
-              name="calories"
-              value={food.calories}
-              onChange={updateField}
-              placeholder="0"
-            />
-          </label>
+          {nutrition ? (
+            <div className="nutrition-preview">
+              <div>
+                <strong>{Math.round(nutrition.calories)}</strong>
+                <span>kcal</span>
+              </div>
+              <div>
+                <strong>{Math.round(nutrition.protein_g)}g</strong>
+                <span>Protein</span>
+              </div>
+              <div>
+                <strong>{Math.round(nutrition.carbs_g)}g</strong>
+                <span>Carbs</span>
+              </div>
+              <div>
+                <strong>{Math.round(nutrition.fat_g)}g</strong>
+                <span>Fat</span>
+              </div>
+            </div>
+          ) : (
+            <p className="preview-hint">
+              {previewError || 'Enter a food and a serving size to see the nutrition.'}
+            </p>
+          )}
 
-          <div className="nutrition-input-grid">
-            <label>
-              Protein (g)
-              <input
-                type="number"
-                min="0"
-                name="protein"
-                value={food.protein}
-                onChange={updateField}
-                placeholder="0"
-              />
-            </label>
-
-            <label>
-              Carbs (g)
-              <input
-                type="number"
-                min="0"
-                name="carbs"
-                value={food.carbs}
-                onChange={updateField}
-                placeholder="0"
-              />
-            </label>
-
-            <label>
-              Fat (g)
-              <input
-                type="number"
-                min="0"
-                name="fat"
-                value={food.fat}
-                onChange={updateField}
-                placeholder="0"
-              />
-            </label>
-          </div>
+          {submitError && <p className="form-error">{submitError}</p>}
 
           <div className="modal-actions">
             <button
@@ -247,7 +206,11 @@ function AddFoodModal({ mealName, onClose, onAdd, initialFood = null }) {
               Cancel
             </button>
 
-            <button type="submit" className="save-food-button">
+            <button
+              type="submit"
+              className="save-food-button"
+              disabled={!preview || saving}
+            >
               {isEditing ? 'Save Changes' : 'Add Food'}
             </button>
           </div>

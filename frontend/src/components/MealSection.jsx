@@ -34,11 +34,9 @@ function MealSection({ meal, onAddFood, onEditFood, onDeleteFood }) {
   }
 
   function handleSave(food) {
-    if (editingIndex !== null) {
-      onEditFood(meal.name, editingIndex, food)
-    } else {
-      onAddFood(meal.name, food)
-    }
+    return editingIndex !== null
+      ? onEditFood(meal.name, editingIndex, food)
+      : onAddFood(meal.name, food)
   }
 
   const editingFood =

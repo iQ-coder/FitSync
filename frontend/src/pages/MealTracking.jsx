@@ -57,20 +57,11 @@ function consumedAtFor(dateISO) {
 
   return `${dateISO}T12:00:00${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
 }
-// يستخرج الغرامات من حقل الحجم (مثل "200g grilled")، وإلا يعتبرها 100
-function parseGrams(description) {
-  const match = String(description || '').match(
-    /(\d+(?:\.\d+)?)\s*(?:g|gr|gram|grams)(?![a-z])/i
-  )
-  const grams = match ? Number(match[1]) : 100
-  return grams > 0 ? Math.min(grams, 10000) : 100
-}
-
 function normalizeLog(log) {
   return {
     id: log.meal_log_id,
     name: log.name,
-    description: log.notes || `${Number(log.grams)}g`,
+    description: log.serving || `${Number(log.grams)}g`,
     calories: Number(log.calories || 0),
     protein: Number(log.protein_g || 0),
     carbs: Number(log.carbs_g || 0),
@@ -85,26 +76,6 @@ function buildMeals(logs) {
     ...template,
     foods: normalized.filter((item) => item.type === type),
   }))
-}
-
-// يحفظ الطعام في جدول الأطعمة (قيمه لكل 100g) ويرجع بيانات السجل
-async function upsertFood(food) {
-  const grams = parseGrams(food.description)
-  const per100 = (value) => Number(((Number(value || 0) * 100) / grams).toFixed(2))
-
-  await api.post('/foods', {
-    name: food.name,
-    calories_per_100g: per100(food.calories),
-    protein_per_100g: per100(food.protein),
-    carbs_per_100g: per100(food.carbs),
-    fat_per_100g: per100(food.fat),
-  })
-
-  return {
-    name: food.name,
-    grams,
-    notes: food.description || null,
-  }
 }
 
 function MealTracking() {
@@ -152,39 +123,30 @@ function MealTracking() {
   const typeOf = (mealName) =>
     mealTemplates.find((m) => m.name === mealName)?.type
 
+  // الواجهة ترسل الاسم والحجم فقط؛ الباك يحسب السعرات والماكروز.
+  // الأخطاء تُرمى للمودال ليعرضها للمستخدم.
   async function handleAddFood(mealName, food) {
-    try {
-      const base = await upsertFood(food)
+    await api.post('/meal-logs', {
+      name: food.name,
+      serving: food.serving,
+      meal_type: typeOf(mealName),
+      consumed_at: consumedAtFor(selectedDate),
+    })
 
-      await api.post('/meal-logs', {
-        ...base,
-        meal_type: typeOf(mealName),
-               consumed_at: consumedAtFor(selectedDate),
-
-      })
-
-      await fetchMealsFromBackend()
-    } catch (error) {
-      console.error('Error adding food:', error.response?.data || error)
-    }
+    await fetchMealsFromBackend()
   }
 
   async function handleEditFood(mealName, foodIndex, updatedFood) {
     const current = mealData.find((m) => m.name === mealName)?.foods[foodIndex]
     if (!current) return
 
-    try {
-      const base = await upsertFood(updatedFood)
+    await api.patch(`/meal-logs/${current.id}`, {
+      name: updatedFood.name,
+      serving: updatedFood.serving,
+      meal_type: typeOf(mealName),
+    })
 
-      await api.patch(`/meal-logs/${current.id}`, {
-        ...base,
-        meal_type: typeOf(mealName),
-      })
-
-      await fetchMealsFromBackend()
-    } catch (error) {
-      console.error('Error updating food:', error.response?.data || error)
-    }
+    await fetchMealsFromBackend()
   }
 
   async function handleDeleteFood(mealName, foodIndex) {
