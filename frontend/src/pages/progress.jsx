@@ -1,5 +1,24 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import Sidebar from '../components/Sidebar'
+
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api').replace(/\/+$/, '')
+
+async function apiRequest(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      Accept: 'application/json',
+      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
+      ...(options.headers || {}),
+    },
+    ...options,
+  })
+
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    throw new Error(data.message || `Request failed (${res.status})`)
+  }
+  return data
+}
 
 const pad = (n) => String(n).padStart(2, '0')
 
@@ -14,6 +33,7 @@ function parseISO(iso) {
 }
 
 function formatDate(iso) {
+  if (!iso) return '—'
   return parseISO(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
@@ -23,17 +43,17 @@ function daysAgo(iso) {
 
 const byDate = (a, b) => a.date.localeCompare(b.date)
 
-const initialWeights = [
-  { date: '2026-08-22', weight: 82.0 },
-  { date: '2026-09-01', weight: 81.2 },
-  { date: '2026-09-12', weight: 80.1 },
-  { date: '2026-09-24', weight: 79.4 },
-  { date: '2026-10-05', weight: 78.6 },
-  { date: '2026-10-16', weight: 77.9 },
-  { date: '2026-10-27', weight: 77.2 },
-  { date: '2026-11-07', weight: 76.8 },
-  { date: '2026-11-17', weight: 76.4 },
-]
+// const initialWeights = [
+//   { date: '2026-08-22', weight: 82.0 },
+//   { date: '2026-09-01', weight: 81.2 },
+//   { date: '2026-09-12', weight: 80.1 },
+//   { date: '2026-09-24', weight: 79.4 },
+//   { date: '2026-10-05', weight: 78.6 },
+//   { date: '2026-10-16', weight: 77.9 },
+//   { date: '2026-10-27', weight: 77.2 },
+//   { date: '2026-11-07', weight: 76.8 },
+//   { date: '2026-11-17', weight: 76.4 },
+// ]
 
 const metrics = [
   { key: 'chest', label: 'Chest', good: 'up' },
@@ -43,17 +63,18 @@ const metrics = [
   { key: 'thigh', label: 'Thigh', good: 'up' },
 ]
 
-const initialMeasurements = [
-  { date: '2026-08-22', chest: 100, waist: 92, hips: 100, arm: 33, thigh: 58 },
-  { date: '2026-11-17', chest: 101, waist: 86, hips: 97, arm: 34.5, thigh: 57.5 },
-]
+// const initialMeasurements = [
+//   { date: '2026-08-22', chest: 100, waist: 92, hips: 100, arm: 33, thigh: 58 },
+//   { date: '2026-11-17', chest: 101, waist: 86, hips: 97, arm: 34.5, thigh: 57.5 },
+// ]
 
-const initialPhotos = [
-  { id: 1, date: '2026-08-22', label: 'Start', url: null },
-  { id: 2, date: '2026-10-05', label: 'Week 6', url: null },
-  { id: 3, date: '2026-11-17', label: 'Latest', url: null },
-]
+// const initialPhotos = [
+//   { id: 1, date: '2026-08-22', label: 'Start', url: null },
+//   { id: 2, date: '2026-10-05', label: 'Week 6', url: null },
+//   { id: 3, date: '2026-11-17', label: 'Latest', url: null },
+// ]
 
+const emptyMeasure = { date: null, chest: 0, waist: 0, hips: 0, arm: 0, thigh: 0 }
 const emptyMeasureForm = { chest: '', waist: '', hips: '', arm: '', thigh: '' }
 
 function WeightChart({ entries, goal }) {
@@ -68,23 +89,23 @@ function WeightChart({ entries, goal }) {
     return <p className="pg-empty">Add at least two entries to see the chart.</p>
   }
 
-  const values = entries.map((e) => e.weight)
-  const all = goal > 0 ? [...values, goal] : values
+  const values = entries.map((e) => Number(e.weight))
+  const all = goal > 0 ? [...values, Number(goal)] : values
   const min = Math.floor(Math.min(...all) - 1)
   const max = Math.ceil(Math.max(...all) + 1)
 
   const x = (i) => padL + (i / (entries.length - 1)) * (W - padL - padR)
   const y = (v) => padT + (1 - (v - min) / (max - min)) * (H - padT - padB)
 
-  const line = entries.map((e, i) => `${x(i)},${y(e.weight)}`).join(' ')
+  const line = entries.map((e, i) => `${x(i)},${y(Number(e.weight))}`).join(' ')
   const area = `${x(0)},${H - padB} ${line} ${x(entries.length - 1)},${H - padB}`
   const ticks = Array.from({ length: 5 }, (_, i) => min + ((max - min) * i) / 4)
-  const labelIdx = [0, Math.floor((entries.length - 1) / 2), entries.length - 1]
+  const labelIdx = [...new Set([0, Math.floor((entries.length - 1) / 2), entries.length - 1])]
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="Weight chart">
-      {ticks.map((t) => (
-        <g key={t}>
+      {ticks.map((t, i) => (
+        <g key={`tick-${i}-${t.toFixed(2)}`}>
           <line x1={padL} x2={W - padR} y1={y(t)} y2={y(t)} stroke="#2a2a31" strokeWidth="1" />
           <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="11" fill="#8b8b95">
             {t.toFixed(0)}
@@ -97,13 +118,13 @@ function WeightChart({ entries, goal }) {
           <line
             x1={padL}
             x2={W - padR}
-            y1={y(goal)}
-            y2={y(goal)}
+            y1={y(Number(goal))}
+            y2={y(Number(goal))}
             stroke="#22c55e"
             strokeWidth="1.5"
             strokeDasharray="6 5"
           />
-          <text x={W - padR} y={y(goal) - 6} textAnchor="end" fontSize="11" fill="#22c55e">
+          <text x={W - padR} y={y(Number(goal)) - 6} textAnchor="end" fontSize="11" fill="#22c55e">
             Goal {goal} kg
           </text>
         </g>
@@ -120,12 +141,20 @@ function WeightChart({ entries, goal }) {
       />
 
       {entries.map((e, i) => (
-        <circle key={e.date} cx={x(i)} cy={y(e.weight)} r="4" fill="#17171c" stroke="#e11d2e" strokeWidth="2.5" />
+        <circle
+          key={`pt-${i}-${e.date}`}
+          cx={x(i)}
+          cy={y(Number(e.weight))}
+          r="4"
+          fill="#17171c"
+          stroke="#e11d2e"
+          strokeWidth="2.5"
+        />
       ))}
 
-      {labelIdx.map((i) => (
+      {labelIdx.map((i, idx) => (
         <text
-          key={i}
+          key={`lbl-${idx}-${i}-${entries[i]?.date}`}
           x={x(i)}
           y={H - 8}
           textAnchor={i === 0 ? 'start' : i === entries.length - 1 ? 'end' : 'middle'}
@@ -140,15 +169,61 @@ function WeightChart({ entries, goal }) {
 }
 
 export default function Progress() {
-  const [weights, setWeights] = useState(initialWeights)
-  const [goal, setGoal] = useState(72)
-  const [goalInput, setGoalInput] = useState('72')
+  const [weights, setWeights] = useState([]) // useState(initialWeights)
+  const [goal, setGoal] = useState(0) // useState(72)
+  const [goalInput, setGoalInput] = useState('') // useState('72')
   const [range, setRange] = useState('all')
   const [newWeight, setNewWeight] = useState('')
   const [newDate, setNewDate] = useState(getToday())
-  const [measurements, setMeasurements] = useState(initialMeasurements)
+  const [measurements, setMeasurements] = useState([]) // useState(initialMeasurements)
   const [measureForm, setMeasureForm] = useState(emptyMeasureForm)
-  const [photos, setPhotos] = useState(initialPhotos)
+  const [photos, setPhotos] = useState([]) // useState(initialPhotos)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+
+    async function loadProgress() {
+      setLoading(true)
+      setError('')
+      try {
+        const res = await apiRequest('/progress')
+        if (!active) return
+
+        const normalizedWeights = (res.weights || []).map((w) => ({
+          ...w,
+          date: String(w.date).slice(0, 10),
+          weight: Number(w.weight),
+        }))
+        const normalizedMeasurements = (res.measurements || []).map((m) => ({
+          ...m,
+          date: String(m.date).slice(0, 10),
+          chest: Number(m.chest ?? 0),
+          waist: Number(m.waist ?? 0),
+          hips: Number(m.hips ?? 0),
+          arm: Number(m.arm ?? 0),
+          thigh: Number(m.thigh ?? 0),
+        }))
+
+        setWeights(normalizedWeights)
+        const g = res.goal !== null && res.goal !== undefined ? Number(res.goal) : 0
+        setGoal(g)
+        setGoalInput(g > 0 ? String(g) : '')
+        setMeasurements(normalizedMeasurements)
+        setPhotos(res.photos || [])
+      } catch (err) {
+        if (active) setError(err.message || 'Failed to load progress data.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+
+    loadProgress()
+    return () => {
+      active = false
+    }
+  }, [])
 
   const sorted = useMemo(() => [...weights].sort(byDate), [weights])
 
@@ -161,79 +236,146 @@ export default function Progress() {
   const current = sorted[sorted.length - 1]?.weight ?? 0
   const change = current - start
   const toGo = current - goal
-  const wantsLoss = goal <= start
+  const wantsLoss = goal > 0 ? goal <= start : true
   const changeIsGood = wantsLoss ? change <= 0 : change >= 0
   const percent =
-    start === goal
-      ? 100
+    !goal || start === goal
+      ? 0
       : Math.max(0, Math.min(100, ((start - current) / (start - goal)) * 100))
 
-  const firstM = measurements[0]
-  const lastM = measurements[measurements.length - 1]
-  const waistChange = lastM.waist - firstM.waist
+  const sortedMeasurements = useMemo(() => [...measurements].sort(byDate), [measurements])
+  const firstM = sortedMeasurements[0] ?? emptyMeasure
+  const lastM = sortedMeasurements[sortedMeasurements.length - 1] ?? emptyMeasure
+  const waistChange = Number(lastM.waist ?? 0) - Number(firstM.waist ?? 0)
 
-  function handleAddWeight(event) {
+  async function handleAddWeight(event) {
     event.preventDefault()
     const w = Number(newWeight)
     if (!w || w <= 0 || !newDate) return
 
-    setWeights((cur) =>
-      [...cur.filter((x) => x.date !== newDate), { date: newDate, weight: Number(w.toFixed(1)) }].sort(byDate)
-    )
-    setNewWeight('')
+    setError('')
+    try {
+      const res = await apiRequest('/progress/weights', {
+        method: 'POST',
+        body: JSON.stringify({
+          date: newDate,
+          weight: Number(w.toFixed(1)),
+        }),
+      })
+      const saved = {
+        ...res.data,
+        date: String(res.data?.date || newDate).slice(0, 10),
+        weight: Number(res.data?.weight ?? w.toFixed(1)),
+      }
+      setWeights((cur) => [...cur.filter((x) => x.date !== saved.date), saved].sort(byDate))
+      setNewWeight('')
+    } catch (err) {
+      setError(err.message || 'Failed to save weight.')
+    }
   }
 
-  function handleDeleteWeight(date) {
-    setWeights((cur) => cur.filter((x) => x.date !== date))
+  async function handleDeleteWeight(date) {
+    setError('')
+    try {
+      await apiRequest(`/progress/weights/${date}`, { method: 'DELETE' })
+      setWeights((cur) => cur.filter((x) => x.date !== date))
+    } catch (err) {
+      setError(err.message || 'Failed to delete weight.')
+    }
   }
 
-  function handleSaveGoal(event) {
+  async function handleSaveGoal(event) {
     event.preventDefault()
     const g = Number(goalInput)
-    if (g > 0) setGoal(g)
+    if (!(g > 0)) return
+
+    setError('')
+    try {
+      const res = await apiRequest('/progress/goal', {
+        method: 'PUT',
+        body: JSON.stringify({ goal_weight: g }),
+      })
+      const savedGoal = Number(res.goal ?? g)
+      setGoal(savedGoal)
+      setGoalInput(String(savedGoal))
+    } catch (err) {
+      setError(err.message || 'Failed to save goal.')
+    }
   }
 
-  function handleAddMeasurement(event) {
+  async function handleAddMeasurement(event) {
     event.preventDefault()
 
-    const entry = { date: getToday() }
+    const payload = { date: getToday() }
     let any = false
 
     metrics.forEach((m) => {
-      const v = Number(measureForm[m.key])
-      if (v > 0) {
-        entry[m.key] = v
-        any = true
-      } else {
-        entry[m.key] = lastM[m.key]
+      const raw = measureForm[m.key]
+      if (raw !== '' && raw !== null && raw !== undefined) {
+        const v = Number(raw)
+        if (v > 0) {
+          payload[m.key] = v
+          any = true
+        }
       }
     })
 
     if (!any) return
 
-    setMeasurements((cur) => [...cur.filter((x) => x.date !== entry.date), entry].sort(byDate))
-    setMeasureForm(emptyMeasureForm)
+    setError('')
+    try {
+      const res = await apiRequest('/progress/measurements', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      })
+      const saved = {
+        ...res.data,
+        date: String(res.data?.date || payload.date).slice(0, 10),
+        chest: Number(res.data?.chest ?? 0),
+        waist: Number(res.data?.waist ?? 0),
+        hips: Number(res.data?.hips ?? 0),
+        arm: Number(res.data?.arm ?? 0),
+        thigh: Number(res.data?.thigh ?? 0),
+      }
+      setMeasurements((cur) => [...cur.filter((x) => x.date !== saved.date), saved].sort(byDate))
+      setMeasureForm(emptyMeasureForm)
+    } catch (err) {
+      setError(err.message || 'Failed to save measurements.')
+    }
   }
 
-  function handlePhoto(event) {
-    const file = event.target.files[0]
+  async function handlePhoto(event) {
+    const file = event.target.files?.[0]
     if (!file) return
 
-    setPhotos((cur) => [
-      ...cur,
-      {
-        id: Date.now(),
-        date: getToday(),
-        label: `Photo ${cur.length + 1}`,
-        url: URL.createObjectURL(file),
-      },
-    ])
-    event.target.value = ''
+    setError('')
+    try {
+      const formData = new FormData()
+      formData.append('image', file)
+      formData.append('date', getToday())
+
+      const res = await apiRequest('/progress/photos', {
+        method: 'POST',
+        body: formData,
+      })
+      if (res.data) {
+        setPhotos((cur) => [...cur, res.data])
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to upload photo.')
+    } finally {
+      event.target.value = ''
+    }
   }
 
-  function handleDeletePhoto(photo) {
-    if (photo.url) URL.revokeObjectURL(photo.url)
-    setPhotos((cur) => cur.filter((p) => p.id !== photo.id))
+  async function handleDeletePhoto(photo) {
+    setError('')
+    try {
+      await apiRequest(`/progress/photos/${photo.id}`, { method: 'DELETE' })
+      setPhotos((cur) => cur.filter((p) => p.id !== photo.id))
+    } catch (err) {
+      setError(err.message || 'Failed to delete photo.')
+    }
   }
 
   const toneClass = (good, diff) => (diff === 0 ? 'pg-neutral' : good ? 'pg-good' : 'pg-bad')
@@ -253,6 +395,9 @@ export default function Progress() {
             <p>Monitor your weight, body measurements, and progress photos over time.</p>
           </div>
         </header>
+
+        {error && <div className="pg-error">{error}</div>}
+        {loading && <p className="pg-empty" style={{ marginBottom: 20 }}>Loading progress...</p>}
 
         {/* Summary */}
         <section className="pg-stats">
@@ -412,7 +557,7 @@ export default function Progress() {
                 </thead>
                 <tbody>
                   {metrics.map((m) => {
-                    const diff = lastM[m.key] - firstM[m.key]
+                    const diff = Number(lastM[m.key] ?? 0) - Number(firstM[m.key] ?? 0)
                     const good = m.good === 'down' ? diff <= 0 : diff >= 0
 
                     return (
@@ -543,4 +688,5 @@ const css = `
 .pg-photo-del { position:absolute; top:8px; right:8px; background:rgba(0,0,0,.6); border-radius:8px; width:28px; height:28px; color:#fff; }
 .pg-photo-meta { display:flex; justify-content:space-between; padding:12px 14px; color:#fff; font-size:14px; }
 .pg-photo-meta span { color:#8b8b95; }
+.pg-error { background:#2a1317; border:1px solid #5a1d25; color:#ff6b78; padding:12px 16px; border-radius:12px; margin-bottom:20px; font-size:14px; }
 `

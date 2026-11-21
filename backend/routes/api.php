@@ -40,6 +40,62 @@ Route::delete('/meal-logs/{id}', [
     'destroy',
 ])->whereNumber('id');
 
+// Progress API
+Route::get('/progress', [
+    ProgressController::class,
+    'index',
+]);
+
+Route::get('/progress/weights', [
+    ProgressController::class,
+    'weights',
+]);
+
+Route::post('/progress/weights', [
+    ProgressController::class,
+    'storeWeight',
+]);
+
+Route::delete('/progress/weights/{date}', [
+    ProgressController::class,
+    'destroyWeight',
+])->where('date', '\d{4}-\d{2}-\d{2}');
+
+Route::get('/progress/goal', [
+    ProgressController::class,
+    'showGoal',
+]);
+
+Route::put('/progress/goal', [
+    ProgressController::class,
+    'saveGoal',
+]);
+
+Route::get('/progress/measurements', [
+    ProgressController::class,
+    'measurements',
+]);
+
+Route::post('/progress/measurements', [
+    ProgressController::class,
+    'storeMeasurement',
+]);
+
+Route::get('/progress/photos', [
+    ProgressController::class,
+    'photos',
+]);
+
+Route::post('/progress/photos', [
+    ProgressController::class,
+    'storePhoto',
+]);
+
+Route::delete('/progress/photos/{id}', [
+    ProgressController::class,
+    'destroyPhoto',
+])->whereNumber('id');
+
 Route::middleware('auth:sanctum')->group(function () {
 
     // Authentication
@@ -81,61 +137,61 @@ Route::middleware('auth:sanctum')->group(function () {
     //     'destroy',
     // ])->whereNumber('id');
 
-    // Progress API
-    Route::get('/progress', [
-        ProgressController::class,
-        'index',
-    ]);
-
-    Route::get('/progress/weights', [
-        ProgressController::class,
-        'weights',
-    ]);
-
-    Route::post('/progress/weights', [
-        ProgressController::class,
-        'storeWeight',
-    ]);
-
-    Route::delete('/progress/weights/{date}', [
-        ProgressController::class,
-        'destroyWeight',
-    ])->where('date', '\d{4}-\d{2}-\d{2}');
-
-    Route::get('/progress/goal', [
-        ProgressController::class,
-        'showGoal',
-    ]);
-
-    Route::put('/progress/goal', [
-        ProgressController::class,
-        'saveGoal',
-    ]);
-
-    Route::get('/progress/measurements', [
-        ProgressController::class,
-        'measurements',
-    ]);
-
-    Route::post('/progress/measurements', [
-        ProgressController::class,
-        'storeMeasurement',
-    ]);
-
-    Route::get('/progress/photos', [
-        ProgressController::class,
-        'photos',
-    ]);
-
-    Route::post('/progress/photos', [
-        ProgressController::class,
-        'storePhoto',
-    ]);
-
-    Route::delete('/progress/photos/{id}', [
-        ProgressController::class,
-        'destroyPhoto',
-    ])->whereNumber('id');
+    // Progress API (معلقة مؤقتاً لأنها نُقلت للأعلى للتجربة)
+    // Route::get('/progress', [
+    //     ProgressController::class,
+    //     'index',
+    // ]);
+    //
+    // Route::get('/progress/weights', [
+    //     ProgressController::class,
+    //     'weights',
+    // ]);
+    //
+    // Route::post('/progress/weights', [
+    //     ProgressController::class,
+    //     'storeWeight',
+    // ]);
+    //
+    // Route::delete('/progress/weights/{date}', [
+    //     ProgressController::class,
+    //     'destroyWeight',
+    // ])->where('date', '\d{4}-\d{2}-\d{2}');
+    //
+    // Route::get('/progress/goal', [
+    //     ProgressController::class,
+    //     'showGoal',
+    // ]);
+    //
+    // Route::put('/progress/goal', [
+    //     ProgressController::class,
+    //     'saveGoal',
+    // ]);
+    //
+    // Route::get('/progress/measurements', [
+    //     ProgressController::class,
+    //     'measurements',
+    // ]);
+    //
+    // Route::post('/progress/measurements', [
+    //     ProgressController::class,
+    //     'storeMeasurement',
+    // ]);
+    //
+    // Route::get('/progress/photos', [
+    //     ProgressController::class,
+    //     'photos',
+    // ]);
+    //
+    // Route::post('/progress/photos', [
+    //     ProgressController::class,
+    //     'storePhoto',
+    // ]);
+    //
+    // Route::delete('/progress/photos/{id}', [
+    //     ProgressController::class,
+    //     'destroyPhoto',
+    // ])->whereNumber('id');
 
     // Nutritionist
     Route::get('/nutritionist/athletes/{athleteId}/meal-logs', [
